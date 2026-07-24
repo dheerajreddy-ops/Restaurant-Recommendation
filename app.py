@@ -51,7 +51,7 @@ st.markdown("""
                 radial-gradient(ellipse at 50% 80%, rgba(255,109,0,0.03) 0%, transparent 50%);
     animation: bgFloat 20s ease-in-out infinite;
     z-index: -1;
-    pointer-events: none;
+    pointer-events: none !important;
 }
 @keyframes bgFloat {
     0%, 100% { transform: translate(0, 0) rotate(0deg); }
@@ -89,12 +89,18 @@ st.markdown("""
 section[data-testid="stSidebar"] {
     background: linear-gradient(180deg, #0d1a0f 0%, #111f14 40%, #0a1510 100%) !important;
     border-right: 1px solid rgba(0,230,118,0.15) !important;
+    z-index: 9999 !important;
+    overflow: visible !important;
+}
+section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+    overflow: visible !important;
 }
 section[data-testid="stSidebar"]::before {
     content: '';
     position: absolute; top: 0; left: 0; right: 0; bottom: 0;
     background: radial-gradient(ellipse at 50% 0%, rgba(0,230,118,0.08) 0%, transparent 70%);
-    pointer-events: none;
+    pointer-events: none !important;
+    z-index: 0 !important;
 }
 section[data-testid="stSidebar"] .stMarkdown p,
 section[data-testid="stSidebar"] .stMarkdown h1,
@@ -498,16 +504,8 @@ with st.sidebar:
         <div style="width:40px;height:2px;background:linear-gradient(90deg,#00E676,#00B0FF);margin:12px auto 0;border-radius:1px;"></div>
     </div>
     """, unsafe_allow_html=True)
+    
     page = st.radio("Navigation", ["🏠 Home", "📊 Data Analysis", "🎯 Recommendation", "ℹ️ About"], label_visibility="collapsed")
-    st.markdown("""
-    <div style="position:absolute;bottom:20px;left:0;right:0;text-align:center;padding:0 16px;">
-        <div style="border-top:1px solid rgba(0,230,118,0.1);padding-top:16px;">
-            <p style="color:rgba(255,255,255,0.3);font-size:0.7rem;margin:0;">Powered by TF-IDF & Cosine Similarity</p>
-            <p style="color:rgba(255,255,255,0.2);font-size:0.65rem;margin:4px 0 0;">© 2026 AI Restaurant Recommender</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
 
 # ═══════════════════════ HOME ═══════════════════════
 if page == "🏠 Home":
