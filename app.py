@@ -61,7 +61,7 @@ st.markdown("""
 
 .particles {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    pointer-events: none; z-index: 0; overflow: hidden;
+    pointer-events: none !important; z-index: -1; overflow: hidden;
 }
 .particle {
     position: absolute;
@@ -355,7 +355,7 @@ hr {
 .hero-title { font-family: 'Space Grotesk', sans-serif; font-size: 3rem; font-weight: 900; color: #ffffff; margin-bottom: 14px; position: relative; z-index: 1; line-height: 1.1; }
 .hero-title span { background: linear-gradient(135deg, #00E676, #00B0FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
 .hero-subtitle { color: #b0b8c4; font-size: 1.1rem; max-width: 700px; margin: 0 auto; position: relative; z-index: 1; line-height: 1.6; }
-.hero-particles { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+.hero-particles { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none !important; z-index: -1; }
 .hero-dot { position: absolute; width: 3px; height: 3px; background: rgba(0,230,118,0.4); border-radius: 50%; animation: heroDotFloat 6s ease-in-out infinite; }
 .hero-dot:nth-child(1) { top:20%; left:15%; animation-delay:0s; }
 .hero-dot:nth-child(2) { top:60%; left:80%; animation-delay:1.5s; background:rgba(0,176,255,0.4); }
