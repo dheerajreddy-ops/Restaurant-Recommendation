@@ -1,7 +1,7 @@
 """
 recommendation.py
-Loads the deployed TF-IDF model + similarity matrix from disk
-and serves restaurant recommendations.
+Loads the deployed TF-IDF model + sparse matrix from disk
+and computes similarity on-the-fly to save memory.
 """
 
 import os
@@ -9,12 +9,13 @@ import json
 import joblib
 import pandas as pd
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "model")
 
 VECTORIZER_PATH = os.path.join(MODEL_DIR, "tfidf_vectorizer.joblib")
-SIMILARITY_PATH = os.path.join(MODEL_DIR, "similarity_matrix.joblib")
+TFIDF_MATRIX_PATH = os.path.join(MODEL_DIR, "tfidf_matrix.joblib")
 DATAFRAME_PATH = os.path.join(MODEL_DIR, "processed_dataframe.joblib")
 METADATA_PATH = os.path.join(MODEL_DIR, "model_metadata.json")
 
@@ -32,27 +33,37 @@ class RestaurantRecommender:
             max_features=5000, stop_words="english",
             ngram_range=(1, 2), min_df=2, max_df=0.95, sublinear_tf=True,
         )
-        tfidf_matrix = self.tfidf.fit_transform(self.df["combined_features"].fillna(""))
-        self.similarity_matrix = __import__("sklearn.metrics.pairwise", fromlist=["cosine_similarity"]).cosine_similarity(
-            tfidf_matrix, tfidf_matrix
-        )
+        self.tfidf_matrix = self.tfidf.fit_transform(self.df["combined_features"].fillna(""))
+        self.metadata = None
         self.model_loaded = "trained"
 
     def _load_deployed_model(self):
-        if not os.path.exists(VECTORIZER_PATH):
+        if not os.path.exists(TFIDF_MATRIX_PATH):
             raise FileNotFoundError(
                 f"No deployed model found at {MODEL_DIR}. "
                 "Run 'python train_model.py' first."
             )
 
         self.tfidf = joblib.load(VECTORIZER_PATH)
-        self.similarity_matrix = joblib.load(SIMILARITY_PATH)
+        self.tfidf_matrix = joblib.load(TFIDF_MATRIX_PATH)
         self.df = joblib.load(DATAFRAME_PATH)
 
         with open(METADATA_PATH) as f:
             self.metadata = json.load(f)
 
         self.model_loaded = "deployed"
+
+    def _get_avg_similarity(self, indices):
+        if not indices:
+            return []
+        sub_matrix = self.tfidf_matrix[indices]
+        sim = cosine_similarity(sub_matrix, self.tfidf_matrix)
+        avg_sims = []
+        for i in range(len(indices)):
+            row = sim[i]
+            top5_idx = np.argsort(row)[::-1][1:6]
+            avg_sims.append(float(np.mean(row[top5_idx])))
+        return avg_sims
 
     def get_recommendations(
         self,
@@ -94,18 +105,7 @@ class RestaurantRecommender:
             return pd.DataFrame()
 
         filtered_indices = filtered.index.tolist()
-
-        avg_similarities = []
-        for idx in filtered_indices:
-            if idx < len(self.similarity_matrix):
-                sims = self.similarity_matrix[idx]
-                top_sim_indices = np.argsort(sims)[::-1][1:6]
-                avg_sim = np.mean(
-                    [sims[i] for i in top_sim_indices if i < len(sims)]
-                )
-                avg_similarities.append(avg_sim)
-            else:
-                avg_similarities.append(0)
+        avg_similarities = self._get_avg_similarity(filtered_indices)
 
         filtered = filtered.copy()
         filtered["similarity_score"] = avg_similarities
@@ -150,19 +150,16 @@ class RestaurantRecommender:
             return pd.DataFrame()
 
         idx = idx_matches[0]
-        if idx >= len(self.similarity_matrix):
-            return pd.DataFrame()
-
-        sim_scores = list(enumerate(self.similarity_matrix[idx]))
-        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
-        top_indices = [i for i, _ in sim_scores[1 : top_n + 1]]
+        query = self.tfidf_matrix[idx : idx + 1]
+        sim = cosine_similarity(query, self.tfidf_matrix).flatten()
+        top_indices = np.argsort(sim)[::-1][1 : top_n + 1]
 
         return self.df.iloc[top_indices][
             ["name", "cuisines", "rate", "votes", "approx_cost(for two people)", "location"]
         ]
 
     def get_model_info(self) -> dict:
-        if self.model_loaded == "deployed":
+        if self.model_loaded == "deployed" and self.metadata:
             return {
                 "source": "deployed",
                 "path": MODEL_DIR,

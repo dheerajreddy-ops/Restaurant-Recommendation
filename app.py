@@ -5,7 +5,7 @@ import os
 import json
 
 from preprocessing import preprocess_pipeline
-from recommendation import RestaurantRecommender, MODEL_DIR, METADATA_PATH
+from recommendation import RestaurantRecommender, MODEL_DIR, METADATA_PATH, TFIDF_MATRIX_PATH
 from utils import (
     rating_distribution_chart, cost_distribution_chart,
     cuisine_distribution_chart, top_cities_chart,
@@ -471,8 +471,7 @@ DATASET_PATH = os.path.join(BASE_DIR, "dataset.csv")
 
 @st.cache_resource
 def load_recommender():
-    model_json = os.path.join(MODEL_DIR, "model_metadata.json")
-    if os.path.exists(model_json):
+    if os.path.exists(TFIDF_MATRIX_PATH) and os.path.exists(METADATA_PATH):
         try:
             rec = RestaurantRecommender()
             return rec, rec.metadata
@@ -481,7 +480,7 @@ def load_recommender():
     import subprocess, sys
     train_script = os.path.join(BASE_DIR, "train_model.py")
     subprocess.run([sys.executable, train_script], cwd=BASE_DIR, check=False)
-    if os.path.exists(model_json):
+    if os.path.exists(TFIDF_MATRIX_PATH):
         rec = RestaurantRecommender()
         return rec, rec.metadata
     df, stats = preprocess_pipeline(DATASET_PATH)

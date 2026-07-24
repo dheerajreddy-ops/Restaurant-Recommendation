@@ -1,7 +1,7 @@
 """
 train_model.py
-Trains the TF-IDF + Cosine Similarity recommendation model
-and saves everything to disk for deployment.
+Trains the TF-IDF model and saves sparse matrix + dataframe to disk.
+No dense similarity matrix — computed on-the-fly to save memory.
 
 Run:  python train_model.py
 """
@@ -15,7 +15,6 @@ import joblib
 import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
@@ -24,20 +23,20 @@ DATASET_PATH = os.path.join(BASE_DIR, "dataset.csv")
 MODEL_DIR = os.path.join(BASE_DIR, "model")
 
 VECTORIZER_PATH = os.path.join(MODEL_DIR, "tfidf_vectorizer.joblib")
-SIMILARITY_PATH = os.path.join(MODEL_DIR, "similarity_matrix.joblib")
+TFIDF_MATRIX_PATH = os.path.join(MODEL_DIR, "tfidf_matrix.joblib")
 DATAFRAME_PATH = os.path.join(MODEL_DIR, "processed_dataframe.joblib")
 METADATA_PATH = os.path.join(MODEL_DIR, "model_metadata.json")
 
 
 def load_raw_data():
-    print("[1/7] Loading raw dataset...")
+    print("[1/6] Loading raw dataset...")
     df = pd.read_csv(DATASET_PATH, encoding="latin-1")
     print(f"      Loaded {len(df):,} rows x {len(df.columns)} columns")
     return df
 
 
 def clean_data(df):
-    print("[2/7] Cleaning data...")
+    print("[2/6] Cleaning data...")
     df = df.copy()
 
     df.drop_duplicates(subset=["name", "location", "cuisines"], keep="first", inplace=True)
@@ -88,7 +87,7 @@ def clean_data(df):
 
 
 def engineer_features(df):
-    print("[3/7] Engineering features...")
+    print("[3/6] Engineering features...")
     df = df.copy()
 
     df["cuisines_cleaned"] = df["cuisines"].str.replace(",", " ", regex=False).str.lower()
@@ -113,7 +112,7 @@ def engineer_features(df):
 
 
 def train_tfidf(df):
-    print("[4/7] Training TF-IDF Vectorizer...")
+    print("[4/6] Training TF-IDF Vectorizer...")
     start = time.time()
 
     tfidf = TfidfVectorizer(
@@ -129,34 +128,20 @@ def train_tfidf(df):
     elapsed = time.time() - start
 
     print(f"      TF-IDF matrix: {tfidf_matrix.shape[0]:,} restaurants x {tfidf_matrix.shape[1]:,} features")
-    print(f"      Vocabulary size: {len(tfidf.vocabulary_):,}")
+    print(f"      Sparse density: {tfidf_matrix.nnz / (tfidf_matrix.shape[0] * tfidf_matrix.shape[1]) * 100:.1f}%")
     print(f"      Training time: {elapsed:.2f}s")
     return tfidf, tfidf_matrix
 
 
-def compute_similarity(tfidf_matrix):
-    print("[5/7] Computing cosine similarity matrix...")
-    start = time.time()
-
-    similarity = cosine_similarity(tfidf_matrix, tfidf_matrix)
-
-    elapsed = time.time() - start
-    mem_mb = similarity.nbytes / (1024 * 1024)
-    print(f"      Similarity matrix: {similarity.shape[0]:,} x {similarity.shape[1]:,}")
-    print(f"      Memory: {mem_mb:.1f} MB")
-    print(f"      Compute time: {elapsed:.2f}s")
-    return similarity
-
-
-def save_model(df, tfidf, similarity):
-    print("[6/7] Saving model artifacts to disk...")
+def save_model(df, tfidf, tfidf_matrix):
+    print("[5/6] Saving model artifacts to disk...")
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     joblib.dump(tfidf, VECTORIZER_PATH, compress=3)
     print(f"      -> Vectorizer: {VECTORIZER_PATH}")
 
-    joblib.dump(similarity, SIMILARITY_PATH, compress=3)
-    print(f"      -> Similarity matrix: {SIMILARITY_PATH}")
+    joblib.dump(tfidf_matrix, TFIDF_MATRIX_PATH, compress=3)
+    print(f"      -> TF-IDF matrix (sparse): {TFIDF_MATRIX_PATH}")
 
     joblib.dump(df, DATAFRAME_PATH, compress=3)
     print(f"      -> DataFrame: {DATAFRAME_PATH}")
@@ -180,7 +165,6 @@ def save_model(df, tfidf, similarity):
         "online_order_pct": round(float(df["online_order"].mean() * 100), 1),
         "table_booking_pct": round(float(df["book_table"].mean() * 100), 1),
         "tfidf_features": int(tfidf_matrix.shape[1]),
-        "similarity_matrix_size": f"{similarity.shape[0]}x{similarity.shape[1]}",
         "cities": cities,
         "cuisines": cuisines,
     }
@@ -191,30 +175,28 @@ def save_model(df, tfidf, similarity):
 
     total_size = sum(
         os.path.getsize(p)
-        for p in [VECTORIZER_PATH, SIMILARITY_PATH, DATAFRAME_PATH, METADATA_PATH]
+        for p in [VECTORIZER_PATH, TFIDF_MATRIX_PATH, DATAFRAME_PATH, METADATA_PATH]
     )
     print(f"      Total model size: {total_size / (1024*1024):.1f} MB")
 
 
 def verify_model():
-    print("[7/7] Verifying deployed model...")
+    print("[6/6] Verifying deployed model...")
     tfidf = joblib.load(VECTORIZER_PATH)
-    similarity = joblib.load(SIMILARITY_PATH)
+    tfidf_matrix = joblib.load(TFIDF_MATRIX_PATH)
     df = joblib.load(DATAFRAME_PATH)
 
     with open(METADATA_PATH) as f:
         meta = json.load(f)
 
-    tfidf_matrix = tfidf.transform(df["combined_features"].fillna(""))
     assert tfidf_matrix.shape[0] == len(df), "Shape mismatch!"
-    assert similarity.shape[0] == len(df), "Similarity shape mismatch!"
 
     test_cuisine = "Italian"
     mask = df["cuisines"].str.contains(test_cuisine, case=False, na=False)
     assert mask.sum() > 0, f"No restaurants found for {test_cuisine}"
 
     print(f"      [OK] Vectorizer loads OK ({tfidf_matrix.shape[1]} features)")
-    print(f"      [OK] Similarity matrix loads OK ({similarity.shape})")
+    print(f"      [OK] TF-IDF matrix loads OK (sparse {tfidf_matrix.shape})")
     print(f"      [OK] DataFrame loads OK ({len(df):,} restaurants)")
     print(f"      [OK] Test query for '{test_cuisine}': {mask.sum()} matches")
     print()
@@ -240,8 +222,7 @@ if __name__ == "__main__":
     df = clean_data(df)
     df = engineer_features(df)
     tfidf, tfidf_matrix = train_tfidf(df)
-    similarity = compute_similarity(tfidf_matrix)
-    save_model(df, tfidf, similarity)
+    save_model(df, tfidf, tfidf_matrix)
     verify_model()
 
     total_elapsed = time.time() - total_start
