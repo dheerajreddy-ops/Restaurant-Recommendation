@@ -475,23 +475,52 @@ hr {
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_PATH = os.path.join(BASE_DIR, "dataset.csv")
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATASET_PATH = os.path.join(BASE_DIR, "dataset.csv")
+
+
+def ensure_model_exists():
+    """Make sure the trained model files exist before loading."""
+    if os.path.exists(TFIDF_MATRIX_PATH) and os.path.exists(METADATA_PATH):
+        return True
+
+    import subprocess
+    import sys
+
+    train_script = os.path.join(BASE_DIR, "train_model.py")
+
+    if os.path.exists(train_script):
+        try:
+            subprocess.run(
+                [sys.executable, train_script],
+                cwd=BASE_DIR,
+                check=True
+            )
+        except Exception as e:
+            st.warning(f"Model training failed: {e}")
+            return False
+
+    return (
+        os.path.exists(TFIDF_MATRIX_PATH)
+        and os.path.exists(METADATA_PATH)
+    )
+
+
 @st.cache_resource
 def load_recommender():
-    if os.path.exists(TFIDF_MATRIX_PATH) and os.path.exists(METADATA_PATH):
+    if ensure_model_exists():
         try:
             rec = RestaurantRecommender()
             return rec, rec.metadata
-        except Exception:
-            pass
-    import subprocess, sys
-    train_script = os.path.join(BASE_DIR, "train_model.py")
-    subprocess.run([sys.executable, train_script], cwd=BASE_DIR, check=False)
-    if os.path.exists(TFIDF_MATRIX_PATH):
-        rec = RestaurantRecommender()
-        return rec, rec.metadata
+        except Exception as e:
+            st.warning(f"Could not load saved model: {e}")
+
     df, stats = preprocess_pipeline(DATASET_PATH)
     rec = RestaurantRecommender(df)
     return rec, stats
+
+
+recommender, stats = load_recommender()
 
 recommender, stats = load_recommender()
 
